@@ -1,0 +1,72 @@
+#######################################################################
+#DRUPAL 7 DEPLOYMENT SCRIPT
+#######################################################################
+
+# ------------ CHANGE THESE VARIABLES TO CONFIGURE THE BELOW SCRIPT FOR ITS ENVIRONMENT. SHOULDN'T NEED TO CHANGE ANYTHING ELSE ------------
+
+if [[ "$CI_BRANCH" == "release"* ]]; then USERNAME=$PRODUCTION_USERNAME; SERVER=$PRODUCTION_SERVER; fi
+if [ "$CI_BRANCH" == "staging" ]; then USERNAME=$STAGING_USERNAME; SERVER=$STAGING_SERVER; fi
+
+# ------------ COPY THE BUILD FILES TO THE REMOTE ------------
+#a tar pipe appears to be the fastest way to deploy the entire directory.
+cd ~/clone/ && tar czf - . | ssh $USERNAME@$SERVER tar xvzfC - /home/$USERNAME/build/
+
+
+# ------------ BRINGING THE SITE DOWN FOR MAINTENANCE ------------
+#shut down drupal 7
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && drush vset maintenance_mode 1"
+
+# ------------ SITE CLEANUP AND BACKUPS ------------
+
+#first we need to clean up any of the crap laying about so that we don't backup 20gb of watchdog logs.
+#clear the cache and truncate the caching tables of drupal
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && drush cc all"
+
+#take a backup of existing public_html
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/ && tar pczf /home/$USERNAME/backups/site/backup-$(date +%s).tar.gz public_html"
+
+#take a database dump, store in db backups. can do this from drush
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && drush sql-dump --gzip --result-file=/home/$USERNAME/backups/database/backup-$(date +%s).sql.gz"
+
+#delete any backup older than the latest 5 files.
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/backups/site/ && ls -1tr | head -n -5 | xargs -d '\n' rm -f --"
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/backups/database/ && ls -1tr | head -n -5 | xargs -d '\n' rm -f --"
+
+
+# ------------ COMPLETE THE BUILD IN THE BUILD DIRECTORY ------------
+
+#copy the files we want to keep from the existing public_html to the build directory
+ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/public_html/sites/default/files/ ]; then cp -af /home/$USERNAME/public_html/sites/default/files /home/$USERNAME/build/sites/default/; fi"
+
+#delete anything from the build directory that shouldn't be there.
+ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/build/.git ]; then rm -rf /home/$USERNAME/build/.git; fi"
+
+#link the settings/config file based on the environment - atm just copying the old settings file so that we can just create it manually. will generate it on the fly later.
+ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/public_html/sites/default/settings.php ]; then cp -a /home/$USERNAME/public_html/sites/default/settings.php /home/$USERNAME/build/sites/default/; fi"
+
+#set permissions for files within the build directory. Important because executables with group/world write will throw a 500 under suexec. Come back later and lock this down more.
+ssh -t $USERNAME@$SERVER "chmod -R 755 /home/$USERNAME/build/*"
+
+
+
+# ------------ DO THE FINAL SWITCH OVER FROM BUILD TO PUBLIC_HTML ------------
+
+#settings and services files are 444? that won't do... not sure if this is something Drupal did to me or not? this might be entirely redundant, but was needed to enable deletion of these files.
+ssh -t $USERNAME@$SERVER "chmod 744 /home/$USERNAME/public_html/sites/default/settings.php /home/$USERNAME/public_html/sites/default"
+
+#empty the public_html directory. we're doing it this way because I have to keep the directory. SSHed in as a regular user, I don't have permissions to set the nobody group on the build dir to do a blue green swap.
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && rm -rf ..?* .[!.]* *"
+
+#move all of the contents of the web directory into the public_html directory.
+ssh -t $USERNAME@$SERVER "shopt -s dotglob && mv /home/$USERNAME/build/* /home/$USERNAME/public_html/"
+
+#link the .htaccess file for the environment. will fail if these files don't exist!
+if [[ "$CI_BRANCH" == "release"* ]]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.production /home/$USERNAME/public_html/.htaccess"; fi
+if [ "$CI_BRANCH" == "staging" ]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.staging /home/$USERNAME/public_html/.htaccess"; fi
+
+
+# ------------ BRINGING THE SITE OUT OF MAINTENANCE ------------
+
+#re-enable drupal
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && drush vset maintenance_mode 0"
+

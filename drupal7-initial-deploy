@@ -1,0 +1,55 @@
+#######################################################################
+# DRUPAL 7 INITIAL DEPLOYMENT SCRIPT
+#
+# This script is quite cut back from the full deploy script, because nothing exists on the endpoint during the first
+# deployment, and the awkward "all in one command" way of doing things was making it difficult to script testing
+# for the existence of things; it ended up being easier to just remove a bunch of lines from the initial deployment.
+# may come back and fix this all up at some stage in the future!
+#
+#######################################################################
+
+# ------------ CHANGE THESE VARIABLES TO CONFIGURE THE BELOW SCRIPT FOR ITS ENVIRONMENT. SHOULDN'T NEED TO CHANGE ANYTHING ELSE ------------
+
+if [[ "$CI_BRANCH" == "release"* ]]; then USERNAME=$PRODUCTION_USERNAME; SERVER=$PRODUCTION_SERVER; fi
+if [ "$CI_BRANCH" == "staging" ]; then USERNAME=$STAGING_USERNAME; SERVER=$STAGING_SERVER; fi
+
+
+# ------------ ONCE OFF SETUP ------------
+#setup required directories
+ssh -t $USERNAME@$SERVER "mkdir -p /home/$USERNAME/build/ && mkdir -p /home/$USERNAME/backups/site/ && mkdir -p /home/$USERNAME/backups/database/"
+
+#make sure cron exists - not 100% happy with this yet.
+#crontab -l | grep -q 'drush cron' || crontab -l | { cat; echo "*/5 * * * * drush cron"; } | crontab -
+
+
+# ------------ COPY THE BUILD FILES TO THE REMOTE ------------
+#a tar pipe appears to be the fastest way to deploy the entire directory.
+cd ~/clone/ && tar czf - . | ssh $USERNAME@$SERVER tar xvzfC - /home/$USERNAME/build/
+
+
+# ------------ SITE CLEANUP AND BACKUPS ------------
+
+#take a backup of existing public_html
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/ && tar pczf /home/$USERNAME/backups/site/backup-$(date +%s).tar.gz public_html"
+
+# ------------ COMPLETE THE BUILD IN THE BUILD DIRECTORY ------------
+
+#delete anything from the build directory that shouldn't be there.
+ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/build/.git ]; then rm -rf /home/$USERNAME/build/.git; fi"
+
+#set permissions for files within the build directory. Important because executables with group/world write will throw a 500 under suexec. Come back later and lock this down more.
+ssh -t $USERNAME@$SERVER "chmod -R 755 /home/$USERNAME/build/*"
+
+
+# ------------ DO THE FINAL SWITCH OVER FROM BUILD TO PUBLIC_HTML ------------
+
+#empty the public_html directory. we're doing it this way because I have to keep the directory. SSHed in as a regular user, I don't have permissions to set the nobody group on the build dir to do a blue green swap.
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && rm -rf ..?* .[!.]* *"
+
+#move all of the contents of the web directory into the public_html directory.
+ssh -t $USERNAME@$SERVER "shopt -s dotglob && mv /home/$USERNAME/build/* /home/$USERNAME/public_html/"
+
+#link the .htaccess file for the environment. will fail if these files don't exist!
+if [[ "$CI_BRANCH" == "release"* ]]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.production /home/$USERNAME/public_html/.htaccess"; fi
+if [ "$CI_BRANCH" == "staging" ]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.staging /home/$USERNAME/public_html/.htaccess"; fi
+
