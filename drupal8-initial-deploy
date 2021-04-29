@@ -67,9 +67,6 @@ ssh -t $USERNAME@$SERVER "chmod -R 755 /home/$USERNAME/build/*"
 
 # ------------ DO THE FINAL SWITCH OVER FROM BUILD TO PUBLIC_HTML ------------
 
-#settings and services files are 444? that won't do... not sure if this is something Drupal did to me or not?
-#ssh -t $USERNAME@$SERVER "chmod 744 /home/$USERNAME/public_html/sites/default/settings.php /home/$USERNAME/public_html/sites/default/services.yml /home/$USERNAME/public_html/sites/default"
-
 #empty the public_html directory. we're doing it this way because I have to keep the directory. SSHed in as a regular user, I don't have permissions to set the nobody group on the build dir to do a blue green swap.
 ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && rm -rf ..?* .[!.]* *"
 
