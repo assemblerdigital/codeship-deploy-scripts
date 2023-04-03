@@ -1,0 +1,39 @@
+#######################################################################
+#BEDROCK WORDPRESS DEPLOYMENT SCRIPT 
+#######################################################################
+# ------------ CHANGE THESE VARIABLES TO CONFIGURE THE BELOW SCRIPT FOR ITS ENVIRONMENT. SHOULDN'T NEED TO CHANGE ANYTHING ELSE ------------
+if [[ "$CI_BRANCH" == "release"* ]]; then USERNAME=$PRODUCTION_USERNAME; SERVER=$PRODUCTION_SERVER; fi
+if [ "$CI_BRANCH" == "staging" ]; then USERNAME=$STAGING_USERNAME; SERVER=$STAGING_SERVER; fi
+# ------------ COPY THE BUILD FILES TO THE REMOTE ------------
+#a tar pipe appears to be the fastest way to deploy the entire directory.
+cd ~/clone/ && tar czf - . | ssh $USERNAME@$SERVER tar xvzfC - /home/$USERNAME/build/
+#shut down wordpress
+# ------------ BRINGING THE SITE DOWN FOR MAINTENANCE ------------
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && wp maintenance-mode activate"
+# ------------ SITE CLEANUP AND BACKUPS ------------
+#take a backup of existing public_html
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/ && tar pczf /home/$USERNAME/backups/site/backup-$(date +%s).tar.gz public_html"
+#take a database dump, store in db backups. 
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && wp db export - | gzip > /home/$USERNAME/backups/database/backup-$(date +%s).sql.gz"
+#delete any backup older than the latest 5 files.
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/backups/site/ && ls -1tr | head -n -5 | xargs -d '\n' rm -f --"
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/backups/database/ && ls -1tr | head -n -5 | xargs -d '\n' rm -f --"
+# ------------ COMPLETE THE BUILD IN THE BUILD DIRECTORY ------------
+#delete anything from the build directory that shouldn't be there.
+ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/build/.git ]; then rm -rf /home/$USERNAME/build/.git; fi"
+#copy the files we want to keep from the existing public_html to the build directory
+#ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/languages/ ]; then cp -af /home/$USERNAME/web/app/languages /home/$USERNAME/build/web/app/; fi"
+ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/uploads/ ]; then cp -af /home/$USERNAME/web/app/uploads /home/$USERNAME/build/web/app/; fi"
+#set permissions within the build directory. Might need to lock this down more in future. 
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/build/ && find . -type d -print0 | xargs -0 chmod 0755"
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/build/ && find . -type f -print0 | xargs -0 chmod 0644"
+# ------------ DO THE FINAL SWITCH OVER FROM BUILD TO PUBLIC_HTML ------------
+#empty the public_html directory. we're doing it this way because I have to keep the directory. SSHed in as a regular user, I don't have permissions to set the nobody group on the build dir to do a blue green swap.
+ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && rm -rf ..?* .[!.]* *"
+#move the contents of the dirs we grabbed from the repo into place.
+ssh -t $USERNAME@$SERVER "shopt -s dotglob && mv /home/$USERNAME/build/web/* /home/$USERNAME/public_html/"
+ssh -t $USERNAME@$SERVER "rm -rf /home/$USERNAME/vendor && mv /home/$USERNAME/build/vendor /home/$USERNAME/"
+ssh -t $USERNAME@$SERVER "rm -rf /home/$USERNAME/config && mv /home/$USERNAME/build/config /home/$USERNAME/"
+#link the .htaccess file for the environment. will fail if these files don't exist!
+if [[ "$CI_BRANCH" == "release"* ]]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.production /home/$USERNAME/public_html/.htaccess"; fi
+if [ "$CI_BRANCH" == "staging" ]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.staging /home/$USERNAME/public_html/.htaccess"; fi
