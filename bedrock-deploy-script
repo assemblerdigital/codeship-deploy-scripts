@@ -34,6 +34,3 @@ ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/public_html/ && rm -rf ..?* .[!.]* 
 ssh -t $USERNAME@$SERVER "shopt -s dotglob && mv /home/$USERNAME/build/web/* /home/$USERNAME/public_html/"
 ssh -t $USERNAME@$SERVER "rm -rf /home/$USERNAME/vendor && mv /home/$USERNAME/build/vendor /home/$USERNAME/"
 ssh -t $USERNAME@$SERVER "rm -rf /home/$USERNAME/config && mv /home/$USERNAME/build/config /home/$USERNAME/"
-#link the .htaccess file for the environment. will fail if these files don't exist!
-if [[ "$CI_BRANCH" == "release"* ]]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.production /home/$USERNAME/public_html/.htaccess"; fi
-if [ "$CI_BRANCH" == "staging" ]; then ssh -t $USERNAME@$SERVER "ln -s /home/$USERNAME/public_html/.htaccess.staging /home/$USERNAME/public_html/.htaccess"; fi
