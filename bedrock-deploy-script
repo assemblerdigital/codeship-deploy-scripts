@@ -24,7 +24,8 @@ ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/build/.git ]; then rm -rf /hom
 #copy the files we want to keep from the existing public_html to the build directory
 #ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/languages/ ]; then cp -af /home/$USERNAME/web/app/languages /home/$USERNAME/build/web/app/; fi"
 ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/uploads/ ]; then cp -af /home/$USERNAME/web/app/uploads /home/$USERNAME/build/web/app/; fi"
-ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/web/.htaccess ]; then cp -af /home/$USERNAME/web/.htaccess /home/$USERNAME/build/web/; fi"
+#If the htaccess file is NOT a symlink, then we want to copy it. This supports the 2023 migration from symlinks to real files. 
+ssh -t $USERNAME@$SERVER "if ! [ -L /home/$USERNAME/web/.htaccess ]; then cp -af /home/$USERNAME/web/.htaccess /home/$USERNAME/build/web/; fi"
 #set permissions within the build directory. Might need to lock this down more in future. 
 ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/build/ && find . -type d -print0 | xargs -0 chmod 0755"
 ssh -t $USERNAME@$SERVER "cd /home/$USERNAME/build/ && find . -type f -print0 | xargs -0 chmod 0644"
