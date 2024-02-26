@@ -24,7 +24,7 @@ ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/build/.git ]; then rm -rf /hom
 #copy the files we want to keep from the existing public_html to the build directory
 #ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/languages/ ]; then cp -af /home/$USERNAME/web/app/languages /home/$USERNAME/build/web/app/; fi"
 ssh -t $USERNAME@$SERVER "if [ -d /home/$USERNAME/web/app/uploads/ ]; then cp -af /home/$USERNAME/web/app/uploads /home/$USERNAME/build/web/app/; fi"
-ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/web/app/nfwlog/ninjafirewall.php ]; then mkdir -P /home/$USERNAME/build/web/app/nfwlog; cp -af /home/$USERNAME/web/app/nfwlog/ninjafirewall.php /home/$USERNAME/build/web/app/nfwlog/; fi"
+ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/web/app/nfwlog/ninjafirewall.php ]; then mkdir -P /home/$USERNAME/build/web/app/nfwlog && cp -af /home/$USERNAME/web/app/nfwlog/ninjafirewall.php /home/$USERNAME/build/web/app/nfwlog/; fi"
 #If the htaccess file exists, and is NOT a symlink, then we want to copy it. This supports the 2023 migration from symlinks to real files. 
 ssh -t $USERNAME@$SERVER "if [ -f /home/$USERNAME/web/.htaccess -a ! -L /home/$USERNAME/web/.htaccess ]; then cp -af /home/$USERNAME/web/.htaccess /home/$USERNAME/build/web/; fi"
 #set permissions within the build directory. Might need to lock this down more in future. 
