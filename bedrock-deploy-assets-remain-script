@@ -1,5 +1,5 @@
 #######################################################################
-#BEDROCK WORDPRESS DEPLOYMENT SCRIPT 
+#DEPLOY BEDROCK AND KEEP THE ASSETS IN PLACE SCRIPT
 #######################################################################
 # ------------ CHANGE THESE VARIABLES TO CONFIGURE THE BELOW SCRIPT FOR ITS ENVIRONMENT. SHOULDN'T NEED TO CHANGE ANYTHING ELSE ------------
 if [[ "$CI_BRANCH" == "release"* ]]; then USERNAME=$PRODUCTION_USERNAME; SERVER=$PRODUCTION_SERVER; fi
